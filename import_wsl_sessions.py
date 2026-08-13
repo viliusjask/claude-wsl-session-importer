@@ -32,9 +32,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CLI_PROJECTS = Path.home() / ".claude" / "projects"
-# Sessions from these entrypoints reach Desktop via account cloud sync already;
-# importing them locally would show the same session twice in the sidebar.
-CLOUD_SYNCED_ENTRYPOINTS = {"claude-vscode"}
+# Sessions from these entrypoints usually reach Desktop via account cloud sync
+# already; importing them would show the same session twice in the sidebar.
+# HEURISTIC, and knowingly imperfect: `claude -p` inherits
+# CLAUDE_CODE_ENTRYPOINT from its parent shell, so a headless run launched from
+# a VS Code terminal is labelled "claude-vscode" despite never being synced.
+# No on-disk field distinguishes the two (verified across ~50 transcripts), so
+# the tool defaults to the safe side and lets you override.
+LIKELY_CLOUD_SYNCED_ENTRYPOINTS = {"claude-vscode"}
 
 
 @dataclass
@@ -195,8 +200,8 @@ def main() -> None:
             if kb < args.min_kb:
                 continue
             facts = read_facts(p)
-            synced = " (cloud-synced: skipped by default)" \
-                if facts.entrypoint in CLOUD_SYNCED_ENTRYPOINTS else ""
+            synced = " (likely cloud-synced: skipped by default)" \
+                if facts.entrypoint in LIKELY_CLOUD_SYNCED_ENTRYPOINTS else ""
             print(f"{p.stem}  {kb:>6} KB  ep={facts.entrypoint or '?':13} "
                   f"{p.parent.name}{synced}")
         return
@@ -215,10 +220,13 @@ def main() -> None:
 
     all_facts = [read_facts(t) for t in targets]
     for f in all_facts:
-        if f.entrypoint in CLOUD_SYNCED_ENTRYPOINTS and not args.include_vscode:
-            sys.exit(f"REFUSED {f.cli_session_id}: entrypoint {f.entrypoint!r} sessions are "
-                     "cloud-synced and already visible in Desktop; importing would duplicate "
-                     "the entry. Pass --include-vscode if you really want that.")
+        if f.entrypoint in LIKELY_CLOUD_SYNCED_ENTRYPOINTS and not args.include_vscode:
+            sys.exit(
+                f"REFUSED {f.cli_session_id}: entrypoint {f.entrypoint!r} usually means the "
+                "session is cloud-synced and already in Desktop, so importing would show it "
+                "twice.\nNote this label is inherited: a headless `claude -p` launched from a "
+                "VS Code terminal is tagged 'claude-vscode' too, and those are NOT synced.\n"
+                "Check Desktop's sidebar; if it is not there, re-run with --include-vscode.")
     entries = [build_entry(f) for f in all_facts]
     for entry in entries:
         print(json.dumps(entry, indent=2))

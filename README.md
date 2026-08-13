@@ -73,9 +73,16 @@ Only sessions that are actually invisible in Desktop. Sessions started from
 the **VS Code extension** (`entrypoint: claude-vscode`) already reach Desktop
 through account cloud sync — importing them would list the same session twice,
 so the tool refuses them unless you pass `--include-vscode`. Headless
-(`claude -p`) and plain terminal sessions are the intended targets. A session
-that was ever resumed in VS Code counts as cloud-synced (the tool keys off the
-transcript's most recent `entrypoint`).
+(`claude -p`) and plain terminal sessions are the intended targets.
+
+**This detection is a heuristic with a known false positive.** `claude -p`
+inherits `CLAUDE_CODE_ENTRYPOINT` from its parent shell, so a headless run
+launched from a VS Code terminal is labelled `claude-vscode` even though
+nothing syncs it. No on-disk field reliably separates the two (checked across
+~50 transcripts: `trackingPath`, snapshot keys and UI entry types all
+cross-cut). So the tool errs toward skipping and tells you how to override.
+If a session isn't in Desktop's sidebar, `--include-vscode` is safe — and a
+wrong import is undone by deleting one file.
 
 ## Grouping in the sidebar
 
@@ -90,13 +97,11 @@ Desktop-internal fields that aren't documented.
 
 - **Experimental.** Validated against the metadata format of Claude Desktop
   as of 2026-08; the format is undocumented and may change.
-- Synthesized entries omit Desktop-internal fields with unknown semantics
-  (`sshRemoteProcessId`, `bridgeSessionIds`). Community reports on
-  [#28791](https://github.com/anthropics/claude-code/issues/28791) say
-  same-OS imported sessions with even *fewer* fields can be resumed from
-  Desktop, so these are likely recreated lazily — but **resuming a WSL
-  import from Desktop is unverified**. Test on an expendable session first,
-  after backing up its `.jsonl`; if the transcript stops growing and a new
-  session file appears instead, Desktop forked it — go back to
-  `claude --resume` in the CLI.
+- **Resuming an imported session from Desktop works** (verified 2026-08-14,
+  Desktop v1.30096.0, Ubuntu-on-WSL2): opening an imported headless session
+  and sending a message appended to the **same** WSL transcript — no fork, no
+  copy. Desktop filled in the one field this tool omits
+  (`sshRemoteProcessId`) by itself on first open, and kept `wslConfig` and
+  `sshRemoteTranscriptPath` intact. Back up the `.jsonl` before your first
+  try anyway.
 - Entries are local to the Windows machine; they do not sync to claude.ai.
