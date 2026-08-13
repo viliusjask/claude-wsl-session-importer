@@ -17,6 +17,23 @@ Existing recovery tools (e.g. claude-code-session-recovery) link metadata to
 transcripts by ID against the *Windows-side* `~\.claude\projects` only — for
 WSL transcripts they require a manual copy that immediately goes stale.
 
+## Prior art: the native import feature
+
+Newer Claude Desktop builds (~July 2026) have **Help → Troubleshooting →
+"Import Claude Code CLI sessions…"** (see
+[claude-code#28791](https://github.com/anthropics/claude-code/issues/28791)).
+**Try that first** — if it finds your sessions, you don't need this tool.
+Reasons it may still earn its place:
+
+- **WSL transcripts** — whether the native importer scans inside WSL distros
+  (vs. only the Windows-side `~\.claude\projects`) is unconfirmed; this tool
+  exists precisely for that cross-OS case.
+- **Selectivity + dedup** — the native import is all-or-nothing; this tool
+  imports chosen sessions and refuses cloud-synced VS Code sessions that
+  would otherwise appear twice.
+- **Scriptability** — usable from cron/CI/agent workflows, e.g. auto-indexing
+  headless `claude -p` runs.
+
 The insight this tool is built on: entries Desktop itself creates for
 WSL-backed sessions carry two extra fields —
 
@@ -74,7 +91,12 @@ Desktop-internal fields that aren't documented.
 - **Experimental.** Validated against the metadata format of Claude Desktop
   as of 2026-08; the format is undocumented and may change.
 - Synthesized entries omit Desktop-internal fields with unknown semantics
-  (`sshRemoteProcessId`, `bridgeSessionIds`). Browsing history is the goal;
-  **resuming an imported session from Desktop is untested** — prefer
-  `claude --resume` in the CLI for that.
+  (`sshRemoteProcessId`, `bridgeSessionIds`). Community reports on
+  [#28791](https://github.com/anthropics/claude-code/issues/28791) say
+  same-OS imported sessions with even *fewer* fields can be resumed from
+  Desktop, so these are likely recreated lazily — but **resuming a WSL
+  import from Desktop is unverified**. Test on an expendable session first,
+  after backing up its `.jsonl`; if the transcript stops growing and a new
+  session file appears instead, Desktop forked it — go back to
+  `claude --resume` in the CLI.
 - Entries are local to the Windows machine; they do not sync to claude.ai.
