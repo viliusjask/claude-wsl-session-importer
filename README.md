@@ -25,9 +25,12 @@ Newer Claude Desktop builds (~July 2026) have **Help → Troubleshooting →
 **Try that first** — if it finds your sessions, you don't need this tool.
 Reasons it may still earn its place:
 
-- **WSL transcripts** — whether the native importer scans inside WSL distros
-  (vs. only the Windows-side `~\.claude\projects`) is unconfirmed; this tool
-  exists precisely for that cross-OS case.
+- **WSL transcripts** — on Windows Desktop v1.30096.0 the native importer
+  reported *"No CLI sessions to import"* while an un-imported WSL session
+  existed on disk; this tool then imported that same session successfully
+  (2026-08-14). The native importer appears not to scan inside WSL distros.
+  Its dialog also mentions untrusted folders, so folder trust may play a
+  part — but the cross-OS case is the gap this tool was built for.
 - **Selectivity + dedup** — the native import is all-or-nothing; this tool
   imports chosen sessions and refuses cloud-synced VS Code sessions that
   would otherwise appear twice.
@@ -75,14 +78,17 @@ through account cloud sync — importing them would list the same session twice,
 so the tool refuses them unless you pass `--include-vscode`. Headless
 (`claude -p`) and plain terminal sessions are the intended targets.
 
-**This detection is a heuristic with a known false positive.** `claude -p`
-inherits `CLAUDE_CODE_ENTRYPOINT` from its parent shell, so a headless run
-launched from a VS Code terminal is labelled `claude-vscode` even though
-nothing syncs it. No on-disk field reliably separates the two (checked across
-~50 transcripts: `trackingPath`, snapshot keys and UI entry types all
-cross-cut). So the tool errs toward skipping and tells you how to override.
-If a session isn't in Desktop's sidebar, `--include-vscode` is safe — and a
-wrong import is undone by deleting one file.
+**This detection is a heuristic with a known false positive.** The label comes
+from `CLAUDE_CODE_ENTRYPOINT`, which a `claude` process **inherits from its
+parent**. A headless run spawned by the VS Code extension itself (e.g. an
+agent running `claude -p`) is therefore labelled `claude-vscode` even though
+nothing syncs it. Ordinary terminal launches — including `tmux` started by
+hand — normally record `cli`/`sdk-cli` and are unaffected. No on-disk field
+reliably separates the two (checked across ~50 transcripts: `trackingPath`,
+snapshot keys and UI entry types all cross-cut). So the tool errs toward
+skipping and tells you how to override. If a session isn't in Desktop's
+sidebar, `--include-vscode` is safe — and a wrong import is undone by
+deleting one file.
 
 ## Grouping in the sidebar
 
