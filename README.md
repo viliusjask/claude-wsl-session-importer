@@ -13,8 +13,11 @@ home directory, so sessions you ran in WSL are in
 "No CLI sessions to import".
 
 (VS Code extension sessions *do* appear in Desktop even when the window is
-connected to WSL — those arrive through account sync, not through local files.
-CLI sessions have no such channel.)
+connected to WSL. That's not about which account you're signed in with — the
+CLI uses the same one. The extension uploads its sessions to your account, so
+any signed-in surface can list them; you can see them on claude.ai in a
+browser too. The plain CLI authenticates to call the API but never registers
+the session anywhere, so nothing outside that machine knows it exists.)
 
 ## How it works
 
