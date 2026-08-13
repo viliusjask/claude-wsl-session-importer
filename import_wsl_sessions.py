@@ -32,7 +32,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 CLI_PROJECTS = Path.home() / ".claude" / "projects"
-TASKLIST = "/mnt/c/Windows/System32/tasklist.exe"
+# Sessions from these entrypoints reach Desktop via account cloud sync already;
+# importing them locally would show the same session twice in the sidebar.
+CLOUD_SYNCED_ENTRYPOINTS = {"claude-vscode"}
 
 
 @dataclass
@@ -46,6 +48,7 @@ class SessionFacts:
     model: str | None = None
     effort: str | None = None
     permission_mode: str | None = None
+    entrypoint: str | None = None
     user_turns: int = 0
 
 
@@ -70,6 +73,7 @@ def read_facts(transcript: Path) -> SessionFacts:
             if e.get("type") == "ai-title" and e.get("aiTitle"):
                 f.title = e["aiTitle"]
             f.cwd = e.get("cwd") or f.cwd
+            f.entrypoint = e.get("entrypoint") or f.entrypoint
             f.effort = e.get("effort") or f.effort
             f.permission_mode = e.get("permissionMode") or f.permission_mode
             msg = e.get("message") or {}
@@ -88,13 +92,19 @@ def read_facts(transcript: Path) -> SessionFacts:
 
 def find_metadata_dir() -> Path:
     """The Desktop app's <account>/<org> metadata dir — the one holding local_*.json."""
-    hits = glob.glob("/mnt/c/Users/*/AppData/Roaming/Claude/claude-code-sessions/*/*/")
+    hits = glob.glob("/mnt/*/Users/*/AppData/Roaming/Claude/claude-code-sessions/*/*/")
     if not hits:
-        sys.exit("No Claude Desktop claude-code-sessions directory found under /mnt/c — "
-                 "is the Desktop app installed on Windows?")
+        sys.exit("No Claude Desktop claude-code-sessions directory found under /mnt/* — "
+                 "is the Desktop app installed on Windows, and is this WSL?")
     if len(hits) > 1:  # account/org rotation leaves stale pairs; take the most recently used
         hits.sort(key=os.path.getmtime, reverse=True)
     return Path(hits[0])
+
+
+def find_tasklist() -> str | None:
+    for drive in glob.glob("/mnt/*/Windows/System32/tasklist.exe"):
+        return drive
+    return None
 
 
 def known_cli_ids(meta_dir: Path) -> set[str]:
@@ -109,8 +119,11 @@ def known_cli_ids(meta_dir: Path) -> set[str]:
 
 def desktop_running() -> bool:
     """Fail closed: any error counts as running."""
+    tasklist = find_tasklist()
+    if tasklist is None:
+        return True
     try:
-        out = subprocess.run([TASKLIST, "/FI", "IMAGENAME eq claude.exe"],
+        out = subprocess.run([tasklist, "/FI", "IMAGENAME eq claude.exe"],
                              capture_output=True, text=True, timeout=15).stdout
         return "claude.exe" in out.lower()
     except (OSError, subprocess.TimeoutExpired):
@@ -164,6 +177,9 @@ def main() -> None:
     ap.add_argument("--list", action="store_true", help="list untracked CLI sessions and exit")
     ap.add_argument("--min-kb", type=int, default=10,
                     help="--list: hide transcripts smaller than this (default 10)")
+    ap.add_argument("--include-vscode", action="store_true",
+                    help="allow importing VS Code extension sessions (these are cloud-synced "
+                         "and already visible in Desktop — importing duplicates them)")
     ap.add_argument("--apply", action="store_true", help="actually write (default: dry-run)")
     args = ap.parse_args()
 
@@ -178,7 +194,11 @@ def main() -> None:
             kb = p.stat().st_size // 1024
             if kb < args.min_kb:
                 continue
-            print(f"{p.stem}  {kb:>6} KB  {p.parent.name}")
+            facts = read_facts(p)
+            synced = " (cloud-synced: skipped by default)" \
+                if facts.entrypoint in CLOUD_SYNCED_ENTRYPOINTS else ""
+            print(f"{p.stem}  {kb:>6} KB  ep={facts.entrypoint or '?':13} "
+                  f"{p.parent.name}{synced}")
         return
 
     if not args.session:
@@ -193,7 +213,13 @@ def main() -> None:
             sys.exit(f"--session {prefix}: already tracked by Desktop, nothing to do.")
         targets.append(matches[0])
 
-    entries = [build_entry(read_facts(t)) for t in targets]
+    all_facts = [read_facts(t) for t in targets]
+    for f in all_facts:
+        if f.entrypoint in CLOUD_SYNCED_ENTRYPOINTS and not args.include_vscode:
+            sys.exit(f"REFUSED {f.cli_session_id}: entrypoint {f.entrypoint!r} sessions are "
+                     "cloud-synced and already visible in Desktop; importing would duplicate "
+                     "the entry. Pass --include-vscode if you really want that.")
+    entries = [build_entry(f) for f in all_facts]
     for entry in entries:
         print(json.dumps(entry, indent=2))
 

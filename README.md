@@ -50,6 +50,25 @@ Requires Python 3.10+, stdlib only.
 - **Skips sessions Desktop already tracks** (matched by `cliSessionId`).
 - **Undo:** delete the printed `local_*.json` file(s).
 
+## Which sessions it imports
+
+Only sessions that are actually invisible in Desktop. Sessions started from
+the **VS Code extension** (`entrypoint: claude-vscode`) already reach Desktop
+through account cloud sync — importing them would list the same session twice,
+so the tool refuses them unless you pass `--include-vscode`. Headless
+(`claude -p`) and plain terminal sessions are the intended targets. A session
+that was ever resumed in VS Code counts as cloud-synced (the tool keys off the
+transcript's most recent `entrypoint`).
+
+## Grouping in the sidebar
+
+Desktop groups locally-imported entries **by their cwd path**, while
+cloud-synced sessions in the same repo group **by the GitHub repo**. If both
+kinds exist for one repo you'll see two adjacent groups with the same repo
+name, disambiguated by path vs. owner (e.g. `myrepo · /home/user/projects`
+and `myrepo · owner`). Cosmetic only; merging them would require
+Desktop-internal fields that aren't documented.
+
 ## Caveats
 
 - **Experimental.** Validated against the metadata format of Claude Desktop
