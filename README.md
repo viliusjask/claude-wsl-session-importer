@@ -17,6 +17,33 @@ Existing recovery tools (e.g. claude-code-session-recovery) link metadata to
 transcripts by ID against the *Windows-side* `~\.claude\projects` only — for
 WSL transcripts they require a manual copy that immediately goes stale.
 
+### Where the files actually live
+
+WSL and Windows have **separate home directories**, so "`~/.claude`" means two
+different places depending on which side you are on:
+
+| Session started from | Transcript written to | Visible in Desktop by default |
+|---|---|---|
+| CLI inside WSL (`claude`, `claude -p`, tmux) | `\\wsl.localhost\<distro>\home\<user>\.claude\projects\<slug>\` | ❌ no |
+| VS Code extension with the window connected to WSL | same WSL path (the extension runs in the WSL server) | ✅ yes — via **account sync**, not the local files |
+| CLI on Windows (PowerShell/cmd) | `C:\Users\<user>\.claude\projects\<slug>\` | ❌ no (that's what the native importer scans) |
+| Desktop opening a WSL session | authoritative copy stays in WSL; Desktop mirrors it to `C:\Users\<user>\.claude\projects\ssh-<sessionId>\` | ✅ yes |
+
+Two independent mechanisms make a session appear in Desktop, and only one of
+them involves your local files:
+
+1. **Account sync** — the VS Code extension and Desktop register their
+   sessions with your account, so they show up on any signed-in surface
+   regardless of which filesystem the transcript sits on. This is why
+   extension sessions appear even though their transcripts are in WSL.
+2. **The local metadata index** — `local_*.json` files describing sessions on
+   *this* machine. Nothing writes these for CLI sessions, which is the gap
+   this tool fills.
+
+Desktop treats a WSL distro as a **remote host** (note the `ssh-` prefix and
+the `sshRemote*` fields), which is exactly why the trick below works: the
+metadata may point at a path that does not exist on Windows at all.
+
 ## Prior art: the native import feature
 
 Newer Claude Desktop builds (~July 2026) have **Help → Troubleshooting →
@@ -26,11 +53,12 @@ Newer Claude Desktop builds (~July 2026) have **Help → Troubleshooting →
 Reasons it may still earn its place:
 
 - **WSL transcripts** — on Windows Desktop v1.30096.0 the native importer
-  reported *"No CLI sessions to import"* while an un-imported WSL session
-  existed on disk; this tool then imported that same session successfully
-  (2026-08-14). The native importer appears not to scan inside WSL distros.
-  Its dialog also mentions untrusted folders, so folder trust may play a
-  part — but the cross-OS case is the gap this tool was built for.
+  reported *"No CLI sessions to import"* twice while un-imported WSL sessions
+  existed on disk (one of them in a folder Desktop already had sessions for,
+  ruling out folder trust as the whole story); this tool then imported them
+  successfully (2026-08-14). Structurally this is expected: the WSL
+  transcripts are not under the Windows user profile the importer scans —
+  see the table above.
 - **Selectivity + dedup** — the native import is all-or-nothing; this tool
   imports chosen sessions and refuses cloud-synced VS Code sessions that
   would otherwise appear twice.
@@ -105,9 +133,11 @@ Desktop-internal fields that aren't documented.
   as of 2026-08; the format is undocumented and may change.
 - **Resuming an imported session from Desktop works** (verified 2026-08-14,
   Desktop v1.30096.0, Ubuntu-on-WSL2): opening an imported headless session
-  and sending a message appended to the **same** WSL transcript — no fork, no
-  copy. Desktop filled in the one field this tool omits
-  (`sshRemoteProcessId`) by itself on first open, and kept `wslConfig` and
-  `sshRemoteTranscriptPath` intact. Back up the `.jsonl` before your first
+  and sending a message appended to the **same** WSL transcript — no fork.
+  Desktop filled in the one field this tool omits (`sshRemoteProcessId`) by
+  itself on first open, and kept `wslConfig` and `sshRemoteTranscriptPath`
+  intact. It also keeps a byte-identical mirror at
+  `C:\Users\<user>\.claude\projects\ssh-<sessionId>\` (verified by md5); the
+  WSL file remains the one that grows. Back up the `.jsonl` before your first
   try anyway.
 - Entries are local to the Windows machine; they do not sync to claude.ai.
